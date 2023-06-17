@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 # hyperparameters
-batch_size = 16 # how many independent sequences will we process in parallel?
+batch_size = 32 # how many independent sequences will we process in parallel?
 block_size = 32 # what is the maximum context length for predictions?
 max_iters = 5000
 eval_interval = 100
@@ -13,7 +13,7 @@ eval_iters = 200
 n_embd = 64
 n_head = 4
 n_layer = 4
-dropout = 0.0
+dropout = .20
 # ------------
 
 torch.manual_seed(1337)
@@ -193,7 +193,7 @@ class BabyPT(nn.Module):
 
     def forward(self, x, targets=None):
         x = self.token_embedding(x)
-        x = x + self.positional_embedding(torch.tensor([T for T in range(block_size)]))
+        x = x + self.positional_embedding(torch.tensor([T for T in range(x.shape[1])]).to(device))
         x = self.blocks(x)
         x = self.ln(x)
         x = self.linear_head(x)
@@ -210,25 +210,38 @@ class BabyPT(nn.Module):
     
     def generate(self, idx, max_token):
         for _ in range(max_token):
-            idx = idx[:, -block_size:]
-            x, _ = self.forward(idx)
-            # Last time-step (depending of length of idx)
-            time_step = (block_size - idx.shape[1] + 1)
-            x = x[:, -time_step, :] 
+            idx_cond = idx[:, -block_size:]
+            x, _ = self.forward(idx_cond)
+            # Last available time-step 
+            x = x[:, -1, :] 
             probs = torch.softmax(x, dim=-1)
             idx_new = torch.multinomial(probs, num_samples=1)
             idx = torch.cat((idx, idx_new), dim=-1)
 
-        return decode(idx.numpy().ravel())
+        return decode(idx.cpu().numpy().ravel())
     
 # Gotta add a training routine now
-
-
 if __name__ == "__main__":
     x, y = get_batch("train")
-    x, y = x.to("cpu"), y.to("cpu")
+    x, y = x.to(device), y.to(device)
 
-    model = BabyPT(n_embd)
-    y_hat = model.generate(torch.tensor([3]).reshape(1, 1), 10)
+    model = BabyPT(n_embd).to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=2e-4)
+    
+    n_epochs = 50000
 
-    print(y_hat)
+    for epoch in range(n_epochs):
+        logit, loss = model(x, y)
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        if  epoch % 100 == 0:
+            loss, current = loss.item(), epoch
+            print(f"loss: {loss:>7f},  {epoch}")
+
+            y_hat = model.eval().generate(torch.tensor([15]).to(device).reshape(1, 1), 500)
+            model.train()
+
+            print(y_hat)

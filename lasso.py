@@ -7,6 +7,13 @@ import arff
 
 # %% 
 # Specify model
+class FeedForward(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.linear = nn.Linear(dim, 1)
+
+    def forward(self, x):
+        return self.linear(x)
 
 class Sparse(nn.Module):
     def __init__(self, dim):
@@ -69,9 +76,11 @@ def get_batches(df: pd.DataFrame, size=64):
 
     y_train = df_train["mcv"]
     x_train = df_train[[c for c in df_train.columns if c != "mcv"]]
+    x_train["intercept"] = 1
 
     # y_val = df_val["mcv"]
     # x_val = df_val[[c for c in df_val.columns if c != "mcv"]]
+    # x_val["intercept"] = 1
 
     y_train, x_train = torch.tensor(y_train.to_numpy()).float(), torch.tensor(x_train.to_numpy()).float()
     # y_val, x_val = torch.tensor(y_val.to_numpy()).float(), torch.tensor(x_val.to_numpy()).float()
